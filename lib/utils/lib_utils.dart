@@ -14,6 +14,11 @@ class Info {
 
     if (json['value'] != null) value = json['value'];
   }
+
+  @override
+  String toString() {
+    return 'Info{type: $type, message: $message, value: $value}';
+  }
 }
 
 class Error {

@@ -495,7 +495,7 @@ public class SwiftFlutterKinSdkPlugin: NSObject, FlutterPlugin {
         let watch: PaymentWatch
         do{
             watch = try kinClient!.accounts[accountNum]!.watchPayments(cursor: nil)
-            sleep(1)
+            //sleep(1)
 //            usleep(200000)
             watch.emitter
                 .on(next: { [weak self] payments in
@@ -519,7 +519,7 @@ public class SwiftFlutterKinSdkPlugin: NSObject, FlutterPlugin {
         do {
             if(!isKinClientInit()) {return}
             watch = try kinClient!.accounts[accountNum]!.watchBalance(nil)
-            sleep(1)
+            //sleep(1)
             watch.emitter
                 .on(next: {
                     self.sendBalance(publicAddress: self.kinClient!.accounts[accountNum]!.publicAddress, amount: ($0 as NSDecimalNumber).intValue)

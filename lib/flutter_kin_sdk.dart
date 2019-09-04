@@ -9,7 +9,6 @@ class FlutterKinSdk {
   //TODO
   //send whitelist playground transaction iOS
   //send whitelist playground transaction Android
-  //send production transaction iOS
   //send whitelist production transaction iOS
   //send whitelist production transaction Android
 
@@ -239,14 +238,15 @@ class FlutterKinSdk {
       String whitelistServiceUrl,
       String toAddress,
       int kinAmount,
-      String memo) async {
+      String memo,
+      int fee) async {
     Map<String, dynamic> params = <String, dynamic>{
       'publicAddress': publicAddress,
       'whitelistServiceUrl': whitelistServiceUrl,
       'toAddress': toAddress,
       'kinAmount': kinAmount,
       'memo': memo,
-      'fee': 0,
+      'fee': fee,
     };
 
     // if (_isProduction) {

@@ -14,6 +14,13 @@ import kin.sdk.*
 import kin.sdk.exception.CreateAccountException
 import kin.utils.ResultCallback
 import java.math.BigDecimal
+import com.google.gson.JsonPrimitive
+import com.google.gson.JsonObject
+import com.google.gson.JsonSerializationContext
+import com.google.gson.JsonElement
+import com.google.gson.JsonSerializer
+import java.lang.reflect.Type
+import com.google.gson.GsonBuilder
 
 
 class FlutterKinSdkPlugin(private var activity: Activity, private var context: Context) : MethodCallHandler {
@@ -142,9 +149,10 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
                 val toAddress: String = call.argument("toAddress") ?: return
                 val kinAmount: Int = call.argument("kinAmount") ?: return
                 val memo: String? = call.argument("memo")
+                val fee: Int = call.argument("fee") ?: return
 
                 val accountNum: Int = getAccountIndexByPublicAddress(publicAddress) ?: return
-                sendWhitelistProductionTransaction(accountNum, whitelistServiceUrl, toAddress, kinAmount, memo)
+                sendWhitelistProductionTransaction(accountNum, whitelistServiceUrl, toAddress, kinAmount, memo, fee)
             }
 
             call.method == Constants.FUND.value -> {
@@ -307,15 +315,17 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
         })
     }
 
-    private fun sendWhitelistProductionTransaction(accountNum: Int, whitelistServiceUrl: String, toAddress: String, kinAmount: Int, memo: String?) {
+    private fun sendWhitelistProductionTransaction(accountNum: Int, whitelistServiceUrl: String, toAddress: String, kinAmount: Int, memo: String?, fee: Int) {
         val account = getAccount(accountNum) ?: return
         val amountInKin = BigDecimal(kinAmount.toString())
         whitelistService = WhitelistService(whitelistServiceUrl)
-        val buildTransactionRequest = account.buildTransaction(toAddress, amountInKin, 0, memo)
+        val buildTransactionRequest = account.buildTransaction(toAddress, amountInKin, fee, memo)
 
         buildTransactionRequest.run(object : ResultCallback<Transaction> {
 
             override fun onResult(transaction: Transaction) {
+
+                Log.d("Transaction", "onResult: networkPassphrase - " + transaction.whitelistableTransaction.networkPassphrase + ", transactionPayload - " + transaction.whitelistableTransaction.transactionPayload.toString())
 
                 whitelistService.whitelistTransaction(transaction.whitelistableTransaction, object : WhitelistServiceCallbacks {
                     override fun onSuccess(whitelistTransaction: String) {
@@ -330,22 +340,22 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
                             }
 
                             override fun onError(e: java.lang.Exception?) {
+
                                 if (e == null) return
-                                Log.d("Transaction", "ResultCallback<TransactionId> - onError: ${e.message}")
+                                Log.d("Transaction", "sendTransactionRequest - onError: ${e.message}")
+
                                 sendError(Constants.SEND_WHITELIST_PRODUCTION_TRANSACTION.value, e)
                             }
                         })
                     }
 
                     override fun onFailure(e: Exception) {
-                        Log.d("Transaction", "WhitelistServiceCallbacks - onFailure: ${e.message}")
                         sendError(Constants.SEND_WHITELIST_PRODUCTION_TRANSACTION.value, e)
                     }
                 })
             }
 
             override fun onError(e: Exception) {
-                Log.d("Transaction", "ResultCallback<Transaction> - onError: ${e.message}")
                 sendError(Constants.SEND_TRANSACTION.value, e)
             }
         })
@@ -430,16 +440,16 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
         val balanceReport = BalanceReport(publicAddress, amount)
         var json: String? = null
         try {
-            json = Gson().toJson(balanceReport)
+            json = GsonBuilder().registerTypeAdapter(BalanceReport::class.java, BalanceReportSerializer()).create().toJson(balanceReport)
         } catch (e: Throwable) {
             sendError(Constants.SEND_BALANCE_JSON.value, e)
         }
         if (json != null)
-        activity.runOnUiThread(object : Runnable {
-            override fun run() {
-                 balanceCallback.success(json)
-            }
-        })
+            activity.runOnUiThread(object : Runnable {
+                override fun run() {
+                    balanceCallback.success(json)
+                }
+            })
     }
 
     private fun sendReport(type: String, message: String, value: String? = null) {
@@ -449,16 +459,16 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
             InfoReport(type, message)
         var json: String? = null
         try {
-            json = Gson().toJson(infoReport)
+            json = GsonBuilder().registerTypeAdapter(InfoReport::class.java, InfoReportSerializer()).create().toJson(infoReport)
         } catch (e: Throwable) {
             sendError(Constants.SEND_INFO_JSON.value, e)
         }
         if (json != null)
-        activity.runOnUiThread(object : Runnable {
-            override fun run() {
-                 infoCallback.success(json)
-            }
-        })
+            activity.runOnUiThread(object : Runnable {
+                override fun run() {
+                    infoCallback.success(json)
+                }
+            })
     }
 
     private fun sendError(type: String, error: Throwable) {
@@ -476,19 +486,19 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
     private fun sendError(code: String, message: String?, details: ErrorReport, isBalance: Boolean = false) {
         var json: String? = null
         try {
-            json = Gson().toJson(details)
+            json = GsonBuilder().registerTypeAdapter(ErrorReport::class.java, ErrorReportSerializer()).create().toJson(details)
         } catch (e: Throwable) {
             sendError(Constants.SEND_ERROR_JSON.value, e)
         }
         if (json != null) {
-           activity.runOnUiThread(object : Runnable {
-            override fun run() {
-                   if (!isBalance)
-                infoCallback.error(code, message, json)
-            else
-                balanceCallback.error(code, message, json)
-            }
-        })
+            activity.runOnUiThread(object : Runnable {
+                override fun run() {
+                    if (!isBalance)
+                        infoCallback.error(code, message, json)
+                    else
+                        balanceCallback.error(code, message, json)
+                }
+            })
         }
     }
 
@@ -500,6 +510,37 @@ class FlutterKinSdkPlugin(private var activity: Activity, private var context: C
     data class BalanceReport(val publicAddress: String, val amount: Int)
     data class InfoReport(val type: String, val message: String, val value: String? = null)
     data class ErrorReport(val type: String, val message: String)
+
+    class BalanceReportSerializer : JsonSerializer<BalanceReport> {
+        override fun serialize(balanceReport: BalanceReport, type: Type, context: JsonSerializationContext): JsonElement {
+            val result = JsonObject()
+            result.add("publicAddress", JsonPrimitive(balanceReport.publicAddress))
+            result.add("amount", JsonPrimitive(balanceReport.amount))
+            return result
+        }
+    }
+
+
+    class InfoReportSerializer : JsonSerializer<InfoReport> {
+        override fun serialize(infoReport: InfoReport, type: Type, context: JsonSerializationContext): JsonElement {
+            val result = JsonObject()
+            result.add("type", JsonPrimitive(infoReport.type))
+            result.add("message", JsonPrimitive(infoReport.message))
+            if (infoReport.value != null) {
+                result.add("amount", JsonPrimitive(infoReport.value))
+            }
+            return result
+        }
+    }
+
+    class ErrorReportSerializer : JsonSerializer<ErrorReport> {
+        override fun serialize(errorReport: ErrorReport, type: Type, context: JsonSerializationContext): JsonElement {
+            val result = JsonObject()
+            result.add("type", JsonPrimitive(errorReport.type))
+            result.add("message", JsonPrimitive(errorReport.message))
+            return result
+        }
+    }
 
     enum class Constants(val value: String) {
         FLUTTER_KIN_SDK("flutter_kin_sdk"),
